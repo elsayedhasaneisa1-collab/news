@@ -14,7 +14,9 @@ header{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;align-
 header h1{font-size:18px;margin:0}
 .hint{font-size:13px;color:var(--muted)}
 main{padding:16px;max-width:1200px;margin:auto}
-#mapView svg{width:100%;height:auto;display:block;border-radius:16px;background:var(--panel);border:1px solid var(--line)}
+#mapView{position:relative;min-height:400px;display:flex;align-items:center;justify-content:center}
+#mapView svg{width:100%;height:auto;max-height:80vh;display:block;border-radius:16px;background:var(--panel);border:1px solid var(--line);z-index:2}
+.map-loading{position:absolute;z-index:1;color:var(--muted);font-size:14px}
 .country{fill:var(--panel);stroke:var(--bg);stroke-width:.6;cursor:pointer;transition:fill .15s,filter .15s}
 .country:hover{fill:var(--accent);filter:drop-shadow(0 0 8px var(--accent))}
 .country.sel{fill:var(--hot)}
@@ -51,6 +53,7 @@ main{padding:16px;max-width:1200px;margin:auto}
 </header>
 <main>
   <section id="mapView">
+    <div class="map-loading" id="mapLoading">جاري تحميل الخريطة... ⏳</div>
     <svg id="map" viewBox="0 0 900 700" role="img" aria-label="خريطة الشرق الأوسط"></svg>
   </section>
   <section id="newsView">
@@ -81,35 +84,28 @@ const FEEDS=[
 "https://www.alarabiya.net/rss/en_meast.xml",
 "http://www.skynewsarabia.com/web/rss/middle-east.xml",
 "https://www.arabnews.com/cat/2/rss.xml",
-"https://english.almayadeen.net/feed.rss",
-"https://sana.sy/en/?feed=rss2",
 "https://www.middleeasteye.net/rss",
-"https://www.newarab.com/rss",
-"https://news.google.com/rss/search?q=when:7d+site:reuters.com/world/middle-east&ceid=US:en&hl=en-US&gl=US",
 "https://feeds.bbci.co.uk/arabic/rss.xml",
 "https://www.france24.com/ar/rss",
-"https://www.france24.com/en/rss",
-"https://english.alarabiya.net/feed/rss2/en.xml",
-"https://www.timesofisrael.com/feed/",
-"https://www.jpost.com/rss/rssfeedsfrontpage.aspx"
+"https://www.timesofisrael.com/feed/"
 ];
 const COUNTRIES={
-EG:{name:"مصر",kw:["مصر","مصري","القاهرة","سيناء","Egypt","Egyptian","Cairo","Sinai"]},
-SA:{name:"السعودية",kw:["السعودية","سعودي","الرياض","Saudi","Riyadh"]},
-IR:{name:"إيران",kw:["إيران","إيراني","طهران","Iran","Iranian","Tehran"]},
-TR:{name:"تركيا",kw:["تركيا","تركي","أنقرة","إسطنبول","Turkey","Turkish","Ankara","Istanbul"]},
-IQ:{name:"العراق",kw:["العراق","عراقي","بغداد","الموصل","Iraq","Iraqi","Baghdad","Mosul"]},
-SY:{name:"سوريا",kw:["سوريا","سوري","دمشق","حلب","إدلب","Syria","Syrian","Damascus","Aleppo","Idlib"]},
-YE:{name:"اليمن",kw:["اليمن","يمني","صنعاء","عدن","الحوثي","Yemen","Yemeni","Sanaa","Aden","Houthi"]},
-OM:{name:"عُمان",kw:["عُمان","عمان","مسقط","Oman","Muscat"]},
-JO:{name:"الأردن",kw:["الأردن","أردني","عمّان","Jordan","Jordanian","Amman"]},
-AE:{name:"الإمارات",kw:["الإمارات","أبوظبي","دبي","UAE","Emirates","Abu Dhabi","Dubai"]},
-IL:{name:"إسرائيل",kw:["إسرائيل","الإسرائيلي","إسرائيلي","تل أبيب","القدس","نتنياهو","Israel","Israeli","Tel Aviv","Jerusalem","Netanyahu"]},
-PS:{name:"فلسطين",kw:["فلسطين","فلسطيني","غزة","الضفة","رام الله","خان يونس","رفح","حماس","Palestine","Palestinian","Gaza","West Bank","Ramallah","Hamas"]},
-LB:{name:"لبنان",kw:["لبنان","لبناني","بيروت","حزب الله","Lebanon","Lebanese","Beirut","Hezbollah"]},
-KW:{name:"الكويت",kw:["الكويت","Kuwait"]},
-QA:{name:"قطر",kw:["قطر","الدوحة","Qatar","Doha"]},
-BH:{name:"البحرين",kw:["البحرين","المنامة","Bahrain","Manama"]}
+"818":{code:"EG",name:"مصر",kw:["مصر","مصري","القاهرة","سيناء","Egypt","Egyptian","Cairo","Sinai"]},
+"682":{code:"SA",name:"السعودية",kw:["السعودية","سعودي","الرياض","Saudi","Riyadh"]},
+"364":{code:"IR",name:"إيران",kw:["إيران","إيراني","طهران","Iran","Iranian","Tehran"]},
+"792":{code:"TR",name:"تركيا",kw:["تركيا","تركي","أنقرة","إسطنبول","Turkey","Turkish","Ankara","Istanbul"]},
+"368":{code:"IQ",name:"العراق",kw:["العراق","عراقي","بغداد","الموصل","Iraq","Iraqi","Baghdad","Mosul"]},
+"760":{code:"SY",name:"سوريا",kw:["سوريا","سوري","دمشق","حلب","إدلب","Syria","Syrian","Damascus","Aleppo","Idlib"]},
+"887":{code:"YE",name:"اليمن",kw:["اليمن","يمني","صنعاء","عدن","الحوثي","Yemen","Yemeni","Sanaa","Aden","Houthi"]},
+"512":{code:"OM",name:"عُمان",kw:["عُمان","عمان","مسقط","Oman","Muscat"]},
+"400":{code:"JO",name:"الأردن",kw:["الأردن","أردني","عمّان","Jordan","Jordanian","Amman"]},
+"784":{code:"AE",name:"الإمارات",kw:["الإمارات","أبوظبي","دبي","UAE","Emirates","Abu Dhabi","Dubai"]},
+"376":{code:"IL",name:"إسرائيل",kw:["إسرائيل","الإسرائيلي","إسرائيلي","تل أبيب","القدس","نتنياهو","Israel","Israeli","Tel Aviv","Jerusalem","Netanyahu"]},
+"275":{code:"PS",name:"فلسطين",kw:["فلسطين","فلسطيني","غزة","الضفة","رام الله","خان يونس","رفح","حماس","Palestine","Palestinian","Gaza","West Bank","Ramallah","Hamas"]},
+"422":{code:"LB",name:"لبنان",kw:["لبنان","لبناني","بيروت","حزب الله","Lebanon","Lebanese","Beirut","Hezbollah"]},
+"414":{code:"KW",name:"الكويت",kw:["الكويت","Kuwait"]},
+"634":{code:"QA",name:"قطر",kw:["قطر","الدوحة","Qatar","Doha"]},
+"048":{code:"BH",name:"البحرين",kw:["البحرين","المنامة","Bahrain","Manama"]}
 };
 const WAR_KW=["حرب","قصف","غارة","غارات","هجوم","اشتباك","معارك","جيش","مقاتل","صاروخ","مسيرة","إيران","إسرائيل","غزة","لبنان","سوريا","العراق","اليمن","السودان","war","airstrike","missile","drone","attack","combat","military","troops"];
 const INCIDENT_KW=["انفجار","مقتل","قتلى","إصابة","إصابات","حادث","سقوط","جرحى","وفيات","explosion","killed","injured","casualties","crash","accident","wounded","dead"];
@@ -208,6 +204,7 @@ const w=900,h=700;
 const projection=d3.geoMercator().fitExtent([[50,50],[w-50,h-50]],{type:"FeatureCollection",features:[]});
 const path=d3.geoPath().projection(projection);
 d3.json("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json").then(world=>{
+document.getElementById("mapLoading").style.display="none";
 const countries=topojson.feature(world,world.objects.countries).features;
 const meCodes=new Set(Object.keys(COUNTRIES));
 const me=countries.filter(f=>meCodes.has(f.id));
@@ -226,6 +223,8 @@ svg.selectAll("text")
 .attr("x",d=>path.centroid(d)[0])
 .attr("y",d=>path.centroid(d)[1])
 .text(d=>COUNTRIES[d.id].name);
+}).catch(err=>{
+document.getElementById("mapLoading").textContent="حصلت مشكلة في تحميل الخريطة، جرب تحديث الصفحة.";
 });
 }
 document.getElementById("back").addEventListener("click",()=>{
