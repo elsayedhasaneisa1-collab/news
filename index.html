@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>الشرق الأوسط — حرب وحوادث</title>
+<style>
+:root{--bg:#0b0e13;--panel:#141922;--line:#232a36;--text:#e9edf3;--muted:#8a94a6;--accent:#e63946;--hot:#ff9f1c}
+[data-theme="light"]{--bg:#f5f6f8;--panel:#ffffff;--line:#dde1e8;--text:#12151b;--muted:#5f6b7a;--accent:#d62839;--hot:#e07a00}
+[data-theme="military"]{--bg:#0f1a12;--panel:#16241a;--line:#2a3d2e;--text:#d8e6d0;--muted:#7a8f7a;--accent:#8fbc5a;--hot:#c9a227}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,"Segoe UI",Tahoma,Arial;background:var(--bg);color:var(--text);min-height:100vh;transition:background .2s,color .2s}
+header{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px;position:sticky;top:0;background:var(--bg);backdrop-filter:blur(8px);z-index:10;flex-wrap:wrap}
+header h1{font-size:18px;margin:0}
+.hint{font-size:13px;color:var(--muted)}
+main{padding:16px;max-width:1200px;margin:auto}
+#mapView svg{width:100%;height:auto;display:block;border-radius:16px;background:var(--panel);border:1px solid var(--line)}
+.country{fill:var(--panel);stroke:var(--bg);stroke-width:.6;cursor:pointer;transition:fill .15s,filter .15s}
+.country:hover{fill:var(--accent);filter:drop-shadow(0 0 8px var(--accent))}
+.country.sel{fill:var(--hot)}
+.clabel{fill:var(--muted);font-size:9px;font-weight:600;text-anchor:middle;pointer-events:none;user-select:none}
+#newsView{display:none}
+#newsView.on{display:block}
+#mapView.off{display:none}
+.bar{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.btn{padding:9px 13px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--text);font:inherit;cursor:pointer;font-size:14px}
+.btn:hover{border-color:var(--accent)}
+.btn.rocket{background:linear-gradient(135deg,var(--accent),#7a1018);border:none;color:#fff}
+.btn.active{background:var(--accent);border-color:var(--accent);color:#fff}
+#countryTitle{font-size:22px;margin:0}
+#status{color:var(--muted);font-size:14px;margin-bottom:12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:8px}
+.card h3{font-size:15px;margin:0;line-height:1.6}
+.card p{margin:0;color:var(--muted);font-size:13px;line-height:1.7}
+.card a{color:var(--accent);font-size:13px;text-decoration:none}
+.meta{font-size:12px;color:var(--muted)}
+.theme-switch{display:flex;gap:6px;flex-wrap:wrap}
+.theme-switch .btn{font-size:12px;padding:6px 10px}
+@media(max-width:600px){.clabel{font-size:7px}}
+</style>
+</head>
+<body data-theme="dark">
+<header>
+  <h1>🌐 الشرق الأوسط — حرب وحوادث</h1>
+  <div class="theme-switch">
+    <button class="btn" data-theme-btn="dark">داكن</button>
+    <button class="btn" data-theme-btn="light">فاتح</button>
+    <button class="btn" data-theme-btn="military">عسكري</button>
+  </div>
+</header>
+<main>
+  <section id="mapView">
+    <svg id="map" viewBox="0 0 900 700" role="img" aria-label="خريطة الشرق الأوسط"></svg>
+  </section>
+  <section id="newsView">
+    <div class="bar">
+      <button class="btn rocket" id="back">← رجوع للخريطة</button>
+      <button class="btn rocket" id="urgent">🔥 عاجل</button>
+      <h2 id="countryTitle"></h2>
+    </div>
+    <div class="bar" id="filterBar" style="display:none">
+      <button class="btn active" data-filter="all">الكل</button>
+      <button class="btn" data-filter="war">حرب</button>
+      <button class="btn" data-filter="incident">حوادث</button>
+      <button class="btn" data-filter="urgent">عاجل</button>
+      <button class="btn" data-filter="politics">سياسة</button>
+      <button class="btn" data-filter="economy">اقتصاد</button>
+    </div>
+    <div id="status"></div>
+    <div id="grid" class="grid"></div>
+  </section>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+<script src="https://cdn.jsdelivr.net/npm/topojson-client@3"></script>
+<script>
+const FEEDS=[
+"https://www.aljazeera.net/aljazeerarss/a7c186be-1baa-4bd4-9d80-a84db769f779/73d0e1b4-532f-45ef-b135-bfdff8b8cab9",
+"https://www.aljazeera.com/xml/rss/all.xml",
+"http://arabic.cnn.com/rss/cnnarabic_mideast.rss",
+"https://www.alarabiya.net/rss/en_meast.xml",
+"http://www.skynewsarabia.com/web/rss/middle-east.xml",
+"https://www.arabnews.com/cat/2/rss.xml",
+"https://english.almayadeen.net/feed.rss",
+"https://sana.sy/en/?feed=rss2",
+"https://www.middleeasteye.net/rss",
+"https://www.newarab.com/rss",
+"https://news.google.com/rss/search?q=when:7d+site:reuters.com/world/middle-east&ceid=US:en&hl=en-US&gl=US",
+"https://feeds.bbci.co.uk/arabic/rss.xml",
+"https://www.france24.com/ar/rss",
+"https://www.france24.com/en/rss",
+"https://english.alarabiya.net/feed/rss2/en.xml",
+"https://www.timesofisrael.com/feed/",
+"https://www.jpost.com/rss/rssfeedsfrontpage.aspx"
+];
+const COUNTRIES={
+EG:{name:"مصر",kw:["مصر","مصري","القاهرة","سيناء","Egypt","Egyptian","Cairo","Sinai"]},
+SA:{name:"السعودية",kw:["السعودية","سعودي","الرياض","Saudi","Riyadh"]},
+IR:{name:"إيران",kw:["إيران","إيراني","طهران","Iran","Iranian","Tehran"]},
+TR:{name:"تركيا",kw:["تركيا","تركي","أنقرة","إسطنبول","Turkey","Turkish","Ankara","Istanbul"]},
+IQ:{name:"العراق",kw:["العراق","عراقي","بغداد","الموصل","Iraq","Iraqi","Baghdad","Mosul"]},
+SY:{name:"سوريا",kw:["سوريا","سوري","دمشق","حلب","إدلب","Syria","Syrian","Damascus","Aleppo","Idlib"]},
+YE:{name:"اليمن",kw:["اليمن","يمني","صنعاء","عدن","الحوثي","Yemen","Yemeni","Sanaa","Aden","Houthi"]},
+OM:{name:"عُمان",kw:["عُمان","عمان","مسقط","Oman","Muscat"]},
+JO:{name:"الأردن",kw:["الأردن","أردني","عمّان","Jordan","Jordanian","Amman"]},
+AE:{name:"الإمارات",kw:["الإمارات","أبوظبي","دبي","UAE","Emirates","Abu Dhabi","Dubai"]},
+IL:{name:"إسرائيل",kw:["إسرائيل","الإسرائيلي","إسرائيلي","تل أبيب","القدس","نتنياهو","Israel","Israeli","Tel Aviv","Jerusalem","Netanyahu"]},
+PS:{name:"فلسطين",kw:["فلسطين","فلسطيني","غزة","الضفة","رام الله","خان يونس","رفح","حماس","Palestine","Palestinian","Gaza","West Bank","Ramallah","Hamas"]},
+LB:{name:"لبنان",kw:["لبنان","لبناني","بيروت","حزب الله","Lebanon","Lebanese","Beirut","Hezbollah"]},
+KW:{name:"الكويت",kw:["الكويت","Kuwait"]},
+QA:{name:"قطر",kw:["قطر","الدوحة","Qatar","Doha"]},
+BH:{name:"البحرين",kw:["البحرين","المنامة","Bahrain","Manama"]}
+};
+const WAR_KW=["حرب","قصف","غارة","غارات","هجوم","اشتباك","معارك","جيش","مقاتل","صاروخ","مسيرة","إيران","إسرائيل","غزة","لبنان","سوريا","العراق","اليمن","السودان","war","airstrike","missile","drone","attack","combat","military","troops"];
+const INCIDENT_KW=["انفجار","مقتل","قتلى","إصابة","إصابات","حادث","سقوط","جرحى","وفيات","explosion","killed","injured","casualties","crash","accident","wounded","dead"];
+const URGENT_KW=["عاجل","الآن","فوري","طارئ","urgent","breaking","now","alert"];
+const POLITICS_KW=["سياسة","حكومة","رئيس","وزير","برلمان","انتخابات","دبلوماسي","politics","government","president","minister","parliament","election","diplomat"];
+const ECONOMY_KW=["اقتصاد","نفط","غاز","أسواق","بورصة","تجارة","استثمار","economy","oil","gas","market","trade","investment"];
+let ALL=[];
+let ac=null;
+let currentFilter="all";
+let currentItems=[];
+function actx(){if(!ac)ac=new(window.AudioContext||window.webkitAudioContext)();return ac;}
+function rocket(){
+const c=actx(),t=c.currentTime,dur=1.3;
+const buf=c.createBuffer(1,c.sampleRate*dur,c.sampleRate);
+const d=buf.getChannelData(0);
+for(let i=0;i<d.length;i++)d[i]=(Math.random()*2-1)*(1-i/d.length);
+const src=c.createBufferSource();src.buffer=buf;
+const lp=c.createBiquadFilter();lp.type="lowpass";
+lp.frequency.setValueAtTime(4000,t);lp.frequency.exponentialRampToValueAtTime(150,t+dur);
+const g=c.createGain();g.gain.setValueAtTime(0.5,t);g.gain.exponentialRampToValueAtTime(0.001,t+dur);
+src.connect(lp);lp.connect(g);g.connect(c.destination);src.start(t);
+const o=c.createOscillator();o.type="sawtooth";
+o.frequency.setValueAtTime(220,t);o.frequency.exponentialRampToValueAtTime(35,t+dur);
+const og=c.createGain();og.gain.setValueAtTime(0.2,t);og.gain.exponentialRampToValueAtTime(0.001,t+dur);
+o.connect(og);og.connect(c.destination);o.start(t);o.stop(t+dur);
+}
+function click(){
+const c=actx(),t=c.currentTime;
+const o=c.createOscillator();o.type="square";o.frequency.setValueAtTime(800,t);o.frequency.exponentialRampToValueAtTime(400,t+0.08);
+const g=c.createGain();g.gain.setValueAtTime(0.1,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.08);
+o.connect(g);g.connect(c.destination);o.start(t);o.stop(t+0.08);
+}
+async function loadAll(){
+const st=document.getElementById("status");
+if(st)st.textContent="جاري تحميل الأخبار...";
+const rs=await Promise.all(FEEDS.map(async u=>{
+try{
+const r=await fetch("https://api.rss2json.com/v1/api.json?rss_url="+encodeURIComponent(u));
+const j=await r.json();
+return (j.items||[]).map(x=>({title:x.title||"",link:x.link||"",description:(x.description||"").replace(/<[^>]+>/g,""),pubDate:x.pubDate||""}));
+}catch(e){return []}
+}));
+ALL=rs.flat();
+}
+function esc(s){return (s||"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));}
+function classify(it){
+const t=(it.title+" "+it.description).toLowerCase();
+if(URGENT_KW.some(k=>t.includes(k.toLowerCase())))return "urgent";
+if(WAR_KW.some(k=>t.includes(k.toLowerCase())))return "war";
+if(INCIDENT_KW.some(k=>t.includes(k.toLowerCase())))return "incident";
+if(POLITICS_KW.some(k=>t.includes(k.toLowerCase())))return "politics";
+if(ECONOMY_KW.some(k=>t.includes(k.toLowerCase())))return "economy";
+return "other";
+}
+function renderNews(items,title){
+currentItems=items;
+const st=document.getElementById("status"),grid=document.getElementById("grid");
+document.getElementById("countryTitle").textContent=title;
+document.getElementById("filterBar").style.display="flex";
+const filtered=currentFilter==="all"?items:items.filter(it=>classify(it)===currentFilter);
+if(!filtered.length){st.textContent="مفيش أخبار متاحة في التصنيف ده.";grid.innerHTML="";return;}
+st.textContent=filtered.length+" خبر";
+grid.innerHTML=filtered.map(it=>`
+<article class="card">
+<div class="meta">${new Date(it.pubDate).toLocaleString("ar-EG")}</div>
+<h3>${esc(it.title)}</h3>
+<p>${esc(it.description.slice(0,140))}</p>
+<a href="${esc(it.link)}" target="_blank" rel="noopener">اقرأ الخبر ←</a>
+</article>`).join("");
+}
+async function showCountry(code){
+rocket();
+const c=COUNTRIES[code];
+if(!c)return;
+document.getElementById("mapView").classList.add("off");
+document.getElementById("newsView").classList.add("on");
+const st=document.getElementById("status"),grid=document.getElementById("grid");
+st.textContent="جاري البحث...";grid.innerHTML="";
+if(!ALL.length)await loadAll();
+const items=ALL.filter(it=>{const t=it.title+" "+it.description;return c.kw.some(k=>t.includes(k));}).sort((a,b)=>new Date(b.pubDate)-new Date(a.pubDate)).slice(0,50);
+renderNews(items,c.name);
+}
+async function showUrgent(){
+rocket();
+document.getElementById("mapView").classList.add("off");
+document.getElementById("newsView").classList.add("on");
+const st=document.getElementById("status"),grid=document.getElementById("grid");
+st.textContent="جاري التحميل...";grid.innerHTML="";
+if(!ALL.length)await loadAll();
+const items=[...ALL].sort((a,b)=>new Date(b.pubDate)-new Date(a.pubDate)).slice(0,60);
+renderNews(items,"🔥 أخبار عاجلة");
+}
+function drawMap(){
+const svg=d3.select("#map");
+const w=900,h=700;
+const projection=d3.geoMercator().fitExtent([[50,50],[w-50,h-50]],{type:"FeatureCollection",features:[]});
+const path=d3.geoPath().projection(projection);
+d3.json("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json").then(world=>{
+const countries=topojson.feature(world,world.objects.countries).features;
+const meCodes=new Set(Object.keys(COUNTRIES));
+const me=countries.filter(f=>meCodes.has(f.id));
+projection.fitExtent([[50,50],[w-50,h-50]],{type:"FeatureCollection",features:me});
+svg.selectAll("path")
+.data(me)
+.join("path")
+.attr("class","country")
+.attr("d",path)
+.attr("data-c",d=>d.id)
+.on("click",(e,d)=>showCountry(d.id));
+svg.selectAll("text")
+.data(me)
+.join("text")
+.attr("class","clabel")
+.attr("x",d=>path.centroid(d)[0])
+.attr("y",d=>path.centroid(d)[1])
+.text(d=>COUNTRIES[d.id].name);
+});
+}
+document.getElementById("back").addEventListener("click",()=>{
+rocket();
+document.getElementById("newsView").classList.remove("on");
+document.getElementById("mapView").classList.remove("off");
+document.getElementById("filterBar").style.display="none";
+});
+document.getElementById("urgent").addEventListener("click",showUrgent);
+document.querySelectorAll("[data-filter]").forEach(b=>{
+b.addEventListener("click",()=>{
+click();
+document.querySelectorAll("[data-filter]").forEach(x=>x.classList.remove("active"));
+b.classList.add("active");
+currentFilter=b.dataset.filter;
+renderNews(currentItems,document.getElementById("countryTitle").textContent);
+});
+});
+document.querySelectorAll("[data-theme-btn]").forEach(b=>{
+b.addEventListener("click",()=>{
+click();
+document.body.dataset.theme=b.dataset.themeBtn;
+});
+});
+drawMap();
+loadAll();
+</script>
+</body>
+</html>
