@@ -12,7 +12,6 @@
 body{margin:0;font-family:system-ui,"Segoe UI",Tahoma,Arial;background:var(--bg);color:var(--text);min-height:100vh;transition:background .2s,color .2s}
 header{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px;position:sticky;top:0;background:var(--bg);backdrop-filter:blur(8px);z-index:10;flex-wrap:wrap}
 header h1{font-size:18px;margin:0}
-.hint{font-size:13px;color:var(--muted)}
 main{padding:16px;max-width:1200px;margin:auto}
 #mapView{position:relative;min-height:400px;display:flex;align-items:center;justify-content:center}
 #mapView svg{width:100%;height:auto;max-height:80vh;display:block;border-radius:16px;background:var(--panel);border:1px solid var(--line);z-index:2}
@@ -24,12 +23,13 @@ main{padding:16px;max-width:1200px;margin:auto}
 #newsView{display:none}
 #newsView.on{display:block}
 #mapView.off{display:none}
-.bar{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap}
-.btn{padding:9px 13px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--text);font:inherit;cursor:pointer;font-size:14px}
+.bar{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:nowrap;overflow-x:auto;padding-bottom:5px;scrollbar-width:none}
+.bar::-webkit-scrollbar{display:none}
+.btn{padding:9px 13px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--text);font:inherit;cursor:pointer;font-size:14px;white-space:nowrap;flex-shrink:0}
 .btn:hover{border-color:var(--accent)}
 .btn.rocket{background:linear-gradient(135deg,var(--accent),#7a1018);border:none;color:#fff}
 .btn.active{background:var(--accent);border-color:var(--accent);color:#fff}
-#countryTitle{font-size:22px;margin:0}
+#countryTitle{font-size:22px;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:250px}
 #status{color:var(--muted);font-size:14px;margin-bottom:12px}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:8px}
@@ -79,14 +79,12 @@ main{padding:16px;max-width:1200px;margin:auto}
 <script>
 const FEEDS=[
 "https://www.aljazeera.net/aljazeerarss/a7c186be-1baa-4bd4-9d80-a84db769f779/73d0e1b4-532f-45ef-b135-bfdff8b8cab9",
-"https://www.aljazeera.com/xml/rss/all.xml",
-"http://arabic.cnn.com/rss/cnnarabic_mideast.rss",
-"https://www.alarabiya.net/rss/en_meast.xml",
-"http://www.skynewsarabia.com/web/rss/middle-east.xml",
-"https://www.arabnews.com/cat/2/rss.xml",
-"https://www.middleeasteye.net/rss",
 "https://feeds.bbci.co.uk/arabic/rss.xml",
 "https://www.france24.com/ar/rss",
+"https://www.skynewsarabia.com/web/rss/middle-east.xml",
+"https://arabic.cnn.com/rss/cnnarabic_mideast.rss",
+"https://www.alarabiya.net/rss/en_meast.xml",
+"https://www.middleeasteye.net/rss",
 "https://www.timesofisrael.com/feed/"
 ];
 const COUNTRIES={
@@ -138,17 +136,28 @@ const o=c.createOscillator();o.type="square";o.frequency.setValueAtTime(800,t);o
 const g=c.createGain();g.gain.setValueAtTime(0.1,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.08);
 o.connect(g);g.connect(c.destination);o.start(t);o.stop(t+0.08);
 }
+async function fetchRSS(url) {
+try {
+const res = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`);
+const text = await res.text();
+const parser = new DOMParser();
+const xml = parser.parseFromString(text, "text/xml");
+const items = xml.querySelectorAll("item");
+return Array.from(items).map(item => ({
+title: item.querySelector("title")?.textContent || "",
+link: item.querySelector("link")?.textContent || "",
+description: item.querySelector("description")?.textContent?.replace(/<[^>]+>/g, "") || "",
+pubDate: item.querySelector("pubDate")?.textContent || new Date().toISOString()
+}));
+} catch(e) {
+return [];
+}
+}
 async function loadAll(){
 const st=document.getElementById("status");
 if(st)st.textContent="جاري تحميل الأخبار...";
-const rs=await Promise.all(FEEDS.map(async u=>{
-try{
-const r=await fetch("https://api.rss2json.com/v1/api.json?rss_url="+encodeURIComponent(u));
-const j=await r.json();
-return (j.items||[]).map(x=>({title:x.title||"",link:x.link||"",description:(x.description||"").replace(/<[^>]+>/g,""),pubDate:x.pubDate||""}));
-}catch(e){return []}
-}));
-ALL=rs.flat();
+const rs=await Promise.all(FEEDS.map(url=>fetchRSS(url)));
+ALL=rs.flat().sort((a,b)=>new Date(b.pubDate)-new Date(a.pubDate));
 }
 function esc(s){return (s||"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));}
 function classify(it){
@@ -185,8 +194,14 @@ document.getElementById("newsView").classList.add("on");
 const st=document.getElementById("status"),grid=document.getElementById("grid");
 st.textContent="جاري البحث...";grid.innerHTML="";
 if(!ALL.length)await loadAll();
-const items=ALL.filter(it=>{const t=it.title+" "+it.description;return c.kw.some(k=>t.includes(k));}).sort((a,b)=>new Date(b.pubDate)-new Date(a.pubDate)).slice(0,50);
+let items=ALL.filter(it=>{const t=it.title+" "+it.description;return c.kw.some(k=>t.includes(k));}).slice(0,50);
+if(items.length===0){
+items=ALL.slice(0,20);
+st.textContent="مفيش أخبار محددة عن "+c.name+" دلوقتي. دي آخر أخبار الشرق الأوسط:";
+renderNews(items,c.name+" (أخبار عامة)");
+} else {
 renderNews(items,c.name);
+}
 }
 async function showUrgent(){
 rocket();
@@ -195,7 +210,7 @@ document.getElementById("newsView").classList.add("on");
 const st=document.getElementById("status"),grid=document.getElementById("grid");
 st.textContent="جاري التحميل...";grid.innerHTML="";
 if(!ALL.length)await loadAll();
-const items=[...ALL].sort((a,b)=>new Date(b.pubDate)-new Date(a.pubDate)).slice(0,60);
+const items=ALL.slice(0,60);
 renderNews(items,"🔥 أخبار عاجلة");
 }
 function drawMap(){
